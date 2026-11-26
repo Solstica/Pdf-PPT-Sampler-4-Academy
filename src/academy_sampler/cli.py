@@ -1,0 +1,58 @@
+import argparse,json,re
+from pathlib import Path
+from .config import config,parameters
+from .registry import ingest,registered
+from .workspace import init,index,batch
+from .renderer import render
+from .validator import validate
+from .progress import progress,STATES
+from .printer import print_pages
+from .manifest import save
+
+def main(argv=None):
+ p=argparse.ArgumentParser(prog='academy'); p.add_argument('--workspace',type=Path,default=Path.cwd()); subs=p.add_subparsers(dest='command',required=True)
+ s=subs.add_parser('init'); s.add_argument('course',type=Path)
+ s=subs.add_parser('ingest'); s.add_argument('--new-version',action='store_true')
+ s=subs.add_parser('render'); s.add_argument('--document'); s.add_argument('--group'); s.add_argument('--input',type=Path); s.add_argument('--pages'); s.add_argument('--preset'); s.add_argument('--long-edge',type=int); s.add_argument('--quality',type=int); s.add_argument('--format',choices=['webp','png','jpg','jpeg']); s.add_argument('--force',action='store_true')
+ subs.add_parser('validate'); subs.add_parser('index')
+ s=subs.add_parser('progress'); s.add_argument('--page'); s.add_argument('--state',choices=STATES); s.add_argument('--reason')
+ s=subs.add_parser('batch'); s.add_argument('--document',required=True); s.add_argument('--size',type=int,default=15); s.add_argument('--pages')
+ s=subs.add_parser('print'); s.add_argument('--pages'); s.add_argument('--list',type=Path); s.add_argument('--output',type=Path,default=Path('print/selected.pdf'))
+ a=p.parse_args(argv); root=a.workspace.resolve()
+ try:
+  if a.command=='init': init(a.course.resolve()); print(a.course); return 0
+  c=config(root)
+  if a.command=='ingest': result=ingest(root,c,a.new_version); index(root); progress(root); print(json.dumps(result,ensure_ascii=False)); return 0
+  if a.command=='render':
+   docs=registered(root)
+   if a.document: docs=[d for d in docs if d['document_id']==a.document]
+   if a.group: docs=[d for d in docs if d['category']==a.group]
+   if a.input: docs=[d for d in docs if (root/d['current_path']).resolve()==(root/a.input).resolve()]
+   if not docs: raise ValueError('No matching registered documents; run ingest first')
+   totals={'converted':0,'skipped':0,'failed':0,'bytes':0}; errors=[]
+   for d in docs:
+    try:
+     stats,errs=render(root,d,parameters(c,d['category'],a.preset,a.long_edge,a.quality,a.format),a.pages,a.force)
+     for k,v in stats.items(): totals[k]+=v
+     errors.extend(f"{d['document_id']}: {e}" for e in errs)
+    except Exception as exc: errors.append(d['document_id']+': '+str(exc))
+   index(root); progress(root)
+   from .manifest import load
+   all_docs=load(root/'sources/index.json')['documents']
+   cumulative={'documents':len(all_docs),'pages':sum(len(m['pages']) for m in all_docs),'image_bytes':sum(p['bytes'] for m in all_docs for p in m['pages'])}
+   save(root/'reports/conversion_report.json',{'run':totals,'cumulative':cumulative,'errors':errors})
+   (root/'reports/conversion_report.md').write_text('# Conversion report\n\n'+json.dumps({'run':totals,'cumulative':cumulative,'errors':errors},indent=2)+'\n',encoding='utf8')
+   print(totals); print('\n'.join(errors)); return int(bool(errors))
+  if a.command=='index': index(root); return 0
+  if a.command=='validate':
+   errors=validate(root); print('\n'.join(errors) if errors else 'All integrity checks passed'); return int(bool(errors))
+  if a.command=='progress': print(progress(root,a.page,a.state,a.reason)); return 0
+  if a.command=='batch': print(json.dumps(batch(root,a.document,a.size,a.pages),indent=2)); return 0
+  if a.command=='print':
+   requested=a.pages.split(',') if a.pages else []
+   if a.list:
+    text=(root/a.list).read_text(encoding='utf8')
+    requested=json.loads(text) if a.list.suffix=='.json' else re.findall(r'\b[A-Z][A-Z0-9]*-P\d{3,}\b',text)
+   print(print_pages(root,[s.strip() for s in requested],root/a.output)); return 0
+ except (ValueError,OSError,KeyError,RuntimeError) as exc: print('Error:',exc); return 1
+if __name__=='__main__': raise SystemExit(main())

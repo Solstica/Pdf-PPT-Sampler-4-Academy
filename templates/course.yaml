@@ -1,0 +1,23 @@
+course: Untitled course
+exam_modes: [comprehensive]
+exam_requirements: review/EXAM_REQUIREMENTS.md
+groups:
+  lectures:
+    path: raw/lectures
+    prefix: L
+    preset: balanced
+    order: []
+  notes:
+    path: raw/notes
+    prefix: N
+    preset: inspection
+  homework:
+    path: raw/homework
+    prefix: H
+    preset: balanced
+  exams:
+    path: raw/exams
+    prefix: E
+    preset: detailed
+# Optional group teacher, format; order is a list of paths relative to group path.
+# Optional presets: {balanced: {long_edge: 1280, quality: 75}}
