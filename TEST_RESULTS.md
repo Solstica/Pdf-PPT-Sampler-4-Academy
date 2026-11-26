@@ -13,4 +13,3 @@ During test setup, the host system temporary directory denied access; acceptance
 
 
 最终结果：5 passed in 22.61s。Editable install、wheel 构建及初始化资源打包检查通过；合成 demo 的 2 份 PDF / 8 页 CLI 完整流程通过。
-

@@ -94,4 +94,3 @@ def test_custom_order_and_states(course):
  for state in ('read','extracted','needs_high_resolution','verified','skipped_with_reason'):
   progress(root,'LECT01-P001',state,'synthetic evidence')
  assert not check_progress(root)
-

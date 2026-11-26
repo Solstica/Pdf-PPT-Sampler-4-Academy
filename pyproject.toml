@@ -16,4 +16,3 @@ academy = "academy_sampler.cli:main"
 where = ["src"]
 [tool.setuptools.package-data]
 academy_sampler = ["assets/**/*", "assets/.gitignore"]
-

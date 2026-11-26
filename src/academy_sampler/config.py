@@ -16,7 +16,7 @@ def config(root):
  return c
 def parameters(c,group,preset=None,edge=None,quality=None,format=None):
  g=c['groups'][group]; presets={k:dict(v) for k,v in PRESETS.items()}
- 
+
  for key,value in c.get('presets',{}).items(): presets[key]={**presets.get(key,{}),**value}
  name=preset or g.get('preset','balanced')
  if name not in presets: raise ValueError('Unknown preset: '+name)
