@@ -4,6 +4,10 @@ A deterministic Python slide pipeline and a separate multimodal study protocol. 
 
 Install with `pip install -e ".[test]"`; Windows Office support: `pip install -e ".[test,windows]"`. Run `academy init my-course`, enter the directory, put source files under raw, then run `academy ingest`, `academy render`, `academy validate`, `academy index`, `academy progress`. Use `academy --workspace PATH COMMAND` from elsewhere. Every command has --help and failures return nonzero.
 
+## V1.2.2: bilingual progress and size estimates
+
+Use trans PP --lang zh or --lang en, or set ACADEMY_SAMPLER_LANG=zh. academy render --lang zh also works. English is the default. Tool progress and known Git progress prefixes are localized; raw errors and machine-readable JSON are preserved. The page display reports source bytes, validated image bytes including cache hits, newly rendered bytes, and an approximate final image size using per-document sample means or same-preset samples. Unknown estimates are displayed as --. Final summaries report archive image size and selected image/source ratio. Staged logical file sizes and Git's native pack byte counts are distinct and exclude complete repository history and local mirror overhead.
+
 ## V1.2.1: live terminal progress
 
 trans and academy render report processed pages, new renders, cache hits, failures, throughput, elapsed time and estimated remaining time. Git push streams native --progress output, plus an approximate object-writing ETA when enough samples exist. Server confirmation is separate; no total upload ETA is invented when Git cannot measure it. Non-TTY output uses periodic lines.

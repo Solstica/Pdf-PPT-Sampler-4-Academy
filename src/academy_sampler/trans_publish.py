@@ -10,7 +10,7 @@ from pathlib import Path
 import pymupdf as fitz
 import yaml
 from . import cli
-from .terminal_progress import PageProgress, GitProgress, duration, stage
+from .terminal_progress import PageProgress, GitProgress, duration, stage, human_bytes, tr, LANGUAGE, write_text
 from .config import config
 from .converters import pdf_source
 from .manifest import inside, load, save, sha, source_directory, document_folder
@@ -61,8 +61,7 @@ def push_live(root, branch):
                 return
             line = annotation.annotate(pending.decode("utf-8", errors="replace"))
             pending.clear()
-            sys.stderr.write(line + ("\r" if ending == 13 and sys.stderr.isatty() else "\n"))
-            sys.stderr.flush()
+            write_text(sys.stderr, line + ("\r" if ending == 13 and sys.stderr.isatty() else "\n"))
         try:
             while True:
                 chunk = proc.stderr.read1(8192)
@@ -81,7 +80,7 @@ def push_live(root, branch):
             raise
     if code:
         raise RuntimeError("Git push failed (exit " + str(code) + "); see live output above")
-    stage("Git push confirmed | elapsed " + duration(time.monotonic() - started))
+    stage(tr("Git push confirmed | elapsed ", "Git 推送确认 | 耗时 ") + duration(time.monotonic() - started))
 
 
 def private_target(url):
@@ -129,7 +128,7 @@ def workspace(home, code, entry, group=None, published=None):
     if not selected:
         raise ValueError("No source documents in requested group")
     records = []
-    stage('Preparing sources and counting pages...')
+    stage('Preparing sources and counting pages...', '准备原件并统计页数...')
     for r in entry["documents"]:
         ident = r["document_id"]
         if ident not in selected and ident not in remote:
@@ -154,7 +153,7 @@ def workspace(home, code, entry, group=None, published=None):
                 raise ValueError("Local document ID conflict")
             total = previous["total_pages"]
         else:
-            stage('  Inspecting ' + ident + ' ...')
+            stage('  Inspecting ' + ident + ' ...', '  检查 ' + ident + ' ...')
             with pdf_source(dst) as (pdf, expected, warnings):
                 with fitz.open(pdf) as doc:
                     total = len(doc)
@@ -197,10 +196,14 @@ def workspace(home, code, entry, group=None, published=None):
                         "duplicates": [v for v in groups.values() if len(v) > 1]})
     totals = {"converted": 0, "skipped": 0, "failed": 0, "bytes": 0}
     to_render = [d for d in records if d["document_id"] in selected]
-    with PageProgress(sum(d["total_pages"] for d in to_render)) as bar:
+    raw_bytes = sum(d["source_bytes"] for d in to_render)
+    plan = {d["document_id"]: (d["total_pages"], d["preset_number"]) for d in to_render}
+    stage(f"Selected: {len(to_render)} documents, {sum(d['total_pages'] for d in to_render)} pages, raw {human_bytes(raw_bytes)}",
+          f"选中: {len(to_render)} 份文档, {sum(d['total_pages'] for d in to_render)} 页, 原件 {human_bytes(raw_bytes)}")
+    with PageProgress(sum(d["total_pages"] for d in to_render), documents=plan, source_bytes=raw_bytes) as bar:
         for d in to_render:
             bar.document(d["document_id"], d["total_pages"])
-            stats, errors = render(base, d, parameters(cfg, d["category"], f"trans_g{d['preset_number']}"), on_page=bar.advance)
+            stats, errors = render(base, d, parameters(cfg, d["category"], f"trans_g{d['preset_number']}"), on_page=bar.advance, on_size=bar.record_size)
             for k, v in stats.items():
                 totals[k] += v
             if errors:
@@ -215,10 +218,24 @@ def workspace(home, code, entry, group=None, published=None):
     known = refs(base)
     save(base / "review/progress.json", {k: v for k, v in history.items() if k in known})
     progress(base)
-    save(base / "reports/conversion_report.json", {"run": totals})
-    print(totals)
-    stage("Validating page images, hashes and index...")
-    if cli.main(["--workspace", str(base), "validate"]):
+    all_docs = load(base / "sources/index.json")["documents"]
+    archive_bytes = sum(p["bytes"] for d in all_docs for p in d["pages"])
+    archive_raw_bytes = sum(d["source_bytes"] for d in records)
+    ratio = bar.image_bytes / raw_bytes * 100 if raw_bytes else 0
+    save(base / "reports/conversion_report.json", {"run": totals, "sizes": {
+        "selected_source_bytes": raw_bytes, "selected_image_bytes": bar.image_bytes,
+        "new_image_bytes": bar.new_bytes, "archive_source_bytes": archive_raw_bytes,
+        "archive_image_bytes": archive_bytes}})
+    stage(f"Selected images: {human_bytes(bar.image_bytes)} / raw {human_bytes(raw_bytes)} ({ratio:.1f}% of original)",
+          f"选中图像: {human_bytes(bar.image_bytes)} / 原件 {human_bytes(raw_bytes)} (为原件的 {ratio:.1f}%)")
+    stage(f"Archive images: {human_bytes(archive_bytes)} | newly rendered: {human_bytes(bar.new_bytes)}",
+          f"归档图像: {human_bytes(archive_bytes)} | 本次新生成: {human_bytes(bar.new_bytes)}")
+    if LANGUAGE.get() == "en":
+        print(totals)
+    else:
+        stage(f"转换 {totals['converted']} 页, 缓存 {totals['skipped']} 页, 失败 {totals['failed']} 页")
+    stage("Validating page images, hashes and index...", "校验图像、哈希及索引...")
+    if cli.main(["--lang", LANGUAGE.get(), "--workspace", str(base), "validate"]):
         raise RuntimeError("Course validate failed; no push performed")
     for d in load(base / "sources/index.json")["documents"]:
         for warning in d.get("warnings", []):
@@ -359,11 +376,13 @@ def stage_content(base, target):
     write_allowed(target, rel, (json.dumps(current, ensure_ascii=False, indent=2) + "\n").encode(), allowed)
     if not (target / ".gitignore").exists():
         write_allowed(target, ".gitignore", b"raw/\nprint/\n.env\n.venv/\n*.tmp\n", allowed)
-    stage("Staging " + str(len(allowed)) + " changed files...")
+    staged_bytes = sum(inside(target, rel).stat().st_size for rel in allowed)
+    stage(f"Staging {len(allowed)} changed files ({human_bytes(staged_bytes)} logical size)...",
+          f"暂存 {len(allowed)} 个变更文件 (逻辑大小 {human_bytes(staged_bytes)})...")
     for i, rel in enumerate(sorted(allowed), 1):
         git(target, "add", "-f", "--", rel)
         if i % 25 == 0 or i == len(allowed):
-            stage(f"  Staged {i}/{len(allowed)} files")
+            stage(f"  Staged {i}/{len(allowed)} files", f"  已暂存 {i}/{len(allowed)} 个文件")
     staged = git(target, "diff", "--cached", "--name-only", "-z").stdout.split("\0")
     if any(p not in allowed for p in staged if p):
         raise ValueError("Unexpected staged path; no push performed")
@@ -400,14 +419,14 @@ def publish(home, data, code, url, preset=None, group=None):
     if not entry:
         raise ValueError("Unknown course; register the raw folder first")
     started = time.monotonic()
-    stage("Checking GitHub repository privacy...")
+    stage("Checking GitHub repository privacy...", "检查 GitHub 仓库可见性...")
     name, remote, branch = private_target(url)
     if entry.get("remote") and entry["remote"]["name"] != name:
         raise ValueError("Course already bound to a different remote")
     if entry.get("remote"):
         remote = entry["remote"]["url"]
     group = normalize_group(group) if group is not None else None
-    stage("Scanning and registering course " + code + "...")
+    stage("Scanning and registering course " + code + "...", "扫描并注册课程 " + code + "...")
     entry = register(home, data, entry["raw"], code, preset if group is None else None)
     if group is not None and not any(in_group(r, group) for r in entry["documents"]):
         raise ValueError("No source documents in requested group: " + group)
@@ -417,30 +436,30 @@ def publish(home, data, code, url, preset=None, group=None):
     store(home, data)
     if group is None:
         base = workspace(home, code, entry)
-        stage("Fetching publication checkout...")
+        stage("Fetching publication checkout...", "获取远程仓库更新...")
         target, branch = checkout(home, code, remote, branch)
     else:
         target, branch = checkout(home, code, remote, branch)
         base = workspace(home, code, entry, group, target)
-    stage("Preparing publication files...")
+    stage("Preparing publication files...", "准备发布文件...")
     stage_content(base, target)
     diff = git(target, "diff", "--cached", "--quiet", allow_failure=True).returncode
     if diff == 1:
-        stage("Creating Git commit...")
+        stage("Creating Git commit...", "创建 Git 提交...")
         git(target, "commit", "-m", "Update course visual archive " + code)
     elif diff != 0:
         raise RuntimeError("Cannot inspect staged changes")
     verify_outgoing(target, branch, base)
     # Check again immediately before transmitting data.
-    stage("Rechecking privacy before push...")
+    stage("Rechecking privacy before push...", "推送前再次检查仓库可见性...")
     private_target(url)
-    stage("Uploading Git objects (native Git progress; ETA is approximate)...")
+    stage("Uploading Git objects (native Git progress; ETA is approximate)...", "上传 Git 对象 (原生 Git 进度，剩余时间为估算)...")
     push_live(target, branch)
     commit = git(target, "rev-parse", "HEAD").stdout.strip()
     entry["last_commit"] = commit
     entry["branch"] = branch
     store(home, data)
-    print("Published", commit)
-    stage("Total elapsed " + duration(time.monotonic() - started))
+    print(tr("Published", "已发布"), commit)
+    stage(tr("Total elapsed ", "总耗时 ") + duration(time.monotonic() - started))
     print("https://github.com/" + name + "/blob/" + branch + "/sources/INDEX.md")
     return commit
