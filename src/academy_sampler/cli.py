@@ -7,7 +7,8 @@ from .renderer import render
 from .validator import validate
 from .progress import progress,STATES
 from .printer import print_pages
-from .manifest import save
+from .manifest import save,page_numbers
+from .terminal_progress import PageProgress
 
 def main(argv=None):
  p=argparse.ArgumentParser(prog='academy'); p.add_argument('--workspace',type=Path,default=Path.cwd()); subs=p.add_subparsers(dest='command',required=True)
@@ -30,12 +31,14 @@ def main(argv=None):
    if a.input: docs=[d for d in docs if (root/d['current_path']).resolve()==(root/a.input).resolve()]
    if not docs: raise ValueError('No matching registered documents; run ingest first')
    totals={'converted':0,'skipped':0,'failed':0,'bytes':0}; errors=[]
-   for d in docs:
-    try:
-     stats,errs=render(root,d,parameters(c,d['category'],a.preset or (f"trans_g{d['preset_number']}" if d.get('preset_number') else None),a.long_edge,a.quality,a.format),a.pages,a.force)
-     for k,v in stats.items(): totals[k]+=v
-     errors.extend(f"{d['document_id']}: {e}" for e in errs)
-    except Exception as exc: errors.append(d['document_id']+': '+str(exc))
+   with PageProgress(sum(len(page_numbers(a.pages,d['total_pages'])) for d in docs)) as bar:
+    for d in docs:
+     bar.document(d['document_id'],len(page_numbers(a.pages,d['total_pages'])))
+     try:
+      stats,errs=render(root,d,parameters(c,d['category'],a.preset or (f"trans_g{d['preset_number']}" if d.get('preset_number') else None),a.long_edge,a.quality,a.format),a.pages,a.force,on_page=bar.advance)
+      for k,v in stats.items(): totals[k]+=v
+      errors.extend(f"{d['document_id']}: {e}" for e in errs)
+     except Exception as exc: errors.append(d['document_id']+': '+str(exc))
    index(root); progress(root)
    from .manifest import load
    all_docs=load(root/'sources/index.json')['documents']

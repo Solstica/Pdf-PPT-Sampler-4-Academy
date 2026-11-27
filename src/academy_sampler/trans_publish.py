@@ -1,5 +1,8 @@
 """Render registered sources and publish a strict allowlist to private GitHub."""
 import json
+import os
+import sys
+import time
 import re
 import shutil
 import subprocess
@@ -7,6 +10,7 @@ from pathlib import Path
 import pymupdf as fitz
 import yaml
 from . import cli
+from .terminal_progress import PageProgress, GitProgress, duration, stage
 from .config import config
 from .converters import pdf_source
 from .manifest import inside, load, save, sha, source_directory, document_folder
@@ -39,6 +43,45 @@ def run(args, cwd=None, allow_failure=False):
 
 def git(root, *args, allow_failure=False):
     return run(["git", "-C", str(root), *args], allow_failure=allow_failure)
+
+
+def push_live(root, branch):
+    """Read CR-delimited native Git progress without waiting for process exit."""
+    command = ["git", "-C", str(root), "push", "--progress", "origin",
+               "HEAD:refs/heads/" + branch]
+    env = dict(os.environ, LC_ALL="C", LANG="C")
+    annotation = GitProgress()
+    started = time.monotonic()
+    with subprocess.Popen(command, stderr=subprocess.PIPE, env=env) as proc:
+        pending = bytearray()
+        # Git writes progress updates separated by carriage returns, not newlines.
+        # Read chunks and emit each completed update immediately.
+        def emit(ending):
+            if not pending:
+                return
+            line = annotation.annotate(pending.decode("utf-8", errors="replace"))
+            pending.clear()
+            sys.stderr.write(line + ("\r" if ending == 13 and sys.stderr.isatty() else "\n"))
+            sys.stderr.flush()
+        try:
+            while True:
+                chunk = proc.stderr.read1(8192)
+                if not chunk:
+                    break
+                for byte in chunk:
+                    if byte in (10, 13):
+                        emit(byte)
+                    else:
+                        pending.append(byte)
+            emit(10)
+            code = proc.wait()
+        except BaseException:
+            proc.terminate()
+            proc.wait()
+            raise
+    if code:
+        raise RuntimeError("Git push failed (exit " + str(code) + "); see live output above")
+    stage("Git push confirmed | elapsed " + duration(time.monotonic() - started))
 
 
 def private_target(url):
@@ -86,6 +129,7 @@ def workspace(home, code, entry, group=None, published=None):
     if not selected:
         raise ValueError("No source documents in requested group")
     records = []
+    stage('Preparing sources and counting pages...')
     for r in entry["documents"]:
         ident = r["document_id"]
         if ident not in selected and ident not in remote:
@@ -110,6 +154,7 @@ def workspace(home, code, entry, group=None, published=None):
                 raise ValueError("Local document ID conflict")
             total = previous["total_pages"]
         else:
+            stage('  Inspecting ' + ident + ' ...')
             with pdf_source(dst) as (pdf, expected, warnings):
                 with fitz.open(pdf) as doc:
                     total = len(doc)
@@ -151,14 +196,15 @@ def workspace(home, code, entry, group=None, published=None):
     save(registry_path, {"schema_version": 1, "documents": records,
                         "duplicates": [v for v in groups.values() if len(v) > 1]})
     totals = {"converted": 0, "skipped": 0, "failed": 0, "bytes": 0}
-    for d in records:
-        if d["document_id"] not in selected:
-            continue
-        stats, errors = render(base, d, parameters(cfg, d["category"], f"trans_g{d['preset_number']}"))
-        for k, v in stats.items():
-            totals[k] += v
-        if errors:
-            raise RuntimeError(d["document_id"] + ": " + "; ".join(errors))
+    to_render = [d for d in records if d["document_id"] in selected]
+    with PageProgress(sum(d["total_pages"] for d in to_render)) as bar:
+        for d in to_render:
+            bar.document(d["document_id"], d["total_pages"])
+            stats, errors = render(base, d, parameters(cfg, d["category"], f"trans_g{d['preset_number']}"), on_page=bar.advance)
+            for k, v in stats.items():
+                totals[k] += v
+            if errors:
+                raise RuntimeError(d["document_id"] + ": " + "; ".join(errors))
     index(base)
     # Keep any deferred local progress in a private file; the active index
     # only describes documents included in this publication.
@@ -171,6 +217,7 @@ def workspace(home, code, entry, group=None, published=None):
     progress(base)
     save(base / "reports/conversion_report.json", {"run": totals})
     print(totals)
+    stage("Validating page images, hashes and index...")
     if cli.main(["--workspace", str(base), "validate"]):
         raise RuntimeError("Course validate failed; no push performed")
     for d in load(base / "sources/index.json")["documents"]:
@@ -312,8 +359,11 @@ def stage_content(base, target):
     write_allowed(target, rel, (json.dumps(current, ensure_ascii=False, indent=2) + "\n").encode(), allowed)
     if not (target / ".gitignore").exists():
         write_allowed(target, ".gitignore", b"raw/\nprint/\n.env\n.venv/\n*.tmp\n", allowed)
-    for rel in sorted(allowed):
+    stage("Staging " + str(len(allowed)) + " changed files...")
+    for i, rel in enumerate(sorted(allowed), 1):
         git(target, "add", "-f", "--", rel)
+        if i % 25 == 0 or i == len(allowed):
+            stage(f"  Staged {i}/{len(allowed)} files")
     staged = git(target, "diff", "--cached", "--name-only", "-z").stdout.split("\0")
     if any(p not in allowed for p in staged if p):
         raise ValueError("Unexpected staged path; no push performed")
@@ -349,12 +399,15 @@ def publish(home, data, code, url, preset=None, group=None):
     entry = data.get(code)
     if not entry:
         raise ValueError("Unknown course; register the raw folder first")
+    started = time.monotonic()
+    stage("Checking GitHub repository privacy...")
     name, remote, branch = private_target(url)
     if entry.get("remote") and entry["remote"]["name"] != name:
         raise ValueError("Course already bound to a different remote")
     if entry.get("remote"):
         remote = entry["remote"]["url"]
     group = normalize_group(group) if group is not None else None
+    stage("Scanning and registering course " + code + "...")
     entry = register(home, data, entry["raw"], code, preset if group is None else None)
     if group is not None and not any(in_group(r, group) for r in entry["documents"]):
         raise ValueError("No source documents in requested group: " + group)
@@ -364,24 +417,30 @@ def publish(home, data, code, url, preset=None, group=None):
     store(home, data)
     if group is None:
         base = workspace(home, code, entry)
+        stage("Fetching publication checkout...")
         target, branch = checkout(home, code, remote, branch)
     else:
         target, branch = checkout(home, code, remote, branch)
         base = workspace(home, code, entry, group, target)
+    stage("Preparing publication files...")
     stage_content(base, target)
     diff = git(target, "diff", "--cached", "--quiet", allow_failure=True).returncode
     if diff == 1:
+        stage("Creating Git commit...")
         git(target, "commit", "-m", "Update course visual archive " + code)
     elif diff != 0:
         raise RuntimeError("Cannot inspect staged changes")
     verify_outgoing(target, branch, base)
     # Check again immediately before transmitting data.
+    stage("Rechecking privacy before push...")
     private_target(url)
-    git(target, "push", "origin", "HEAD:refs/heads/" + branch)
+    stage("Uploading Git objects (native Git progress; ETA is approximate)...")
+    push_live(target, branch)
     commit = git(target, "rev-parse", "HEAD").stdout.strip()
     entry["last_commit"] = commit
     entry["branch"] = branch
     store(home, data)
     print("Published", commit)
+    stage("Total elapsed " + duration(time.monotonic() - started))
     print("https://github.com/" + name + "/blob/" + branch + "/sources/INDEX.md")
     return commit

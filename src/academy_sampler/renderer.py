@@ -14,7 +14,7 @@ def valid_image(path,p):
    return im.size==(p['width'],p['height']) and im.mode=='RGB' and path.stat().st_size==p['bytes']>0 and sha(path)==p['image_sha256']
  except (OSError,KeyError): return False
 
-def render(root,d,params,spec=None,force=False):
+def render(root,d,params,spec=None,force=False,on_page=None):
  src=source(root,d); folder=document_folder(root,d); mp=folder/'manifest.json'
  m=load(mp,{**d,'pages':[]}); entries={p['original_page']:p for p in m['pages']}; stats={'converted':0,'skipped':0,'failed':0,'bytes':0}; errors=[]
  with pdf_source(src) as (pdf,expected,warnings):
@@ -26,7 +26,10 @@ def render(root,d,params,spec=None,force=False):
    m.update({**d,'source_sha256':d['source_sha256'],'converter':converter,'warnings':warnings,'updated_at':now()})
    for n in page_numbers(spec,len(doc)):
     prior=entries.get(n); path=folder/prior['path'] if prior else None
-    if not force and prior and prior.get('parameters')==params and prior.get('converter')==converter and valid_image(path,prior): stats['skipped']+=1; continue
+    if not force and prior and prior.get('parameters')==params and prior.get('converter')==converter and valid_image(path,prior):
+     stats['skipped']+=1
+     if on_page: on_page(d['document_id'],n,'skipped')
+     continue
     try:
      page=doc[n-1]; scale=params['long_edge']/max(page.rect.width,page.rect.height)
      pix=page.get_pixmap(matrix=fitz.Matrix(scale,scale),colorspace=fitz.csRGB,alpha=False)
@@ -42,5 +45,6 @@ def render(root,d,params,spec=None,force=False):
      stats['failed']+=1; errors.append(f'{n}: {exc}'); entries.pop(n,None)
     m['pages']=sorted(entries.values(),key=lambda p:p['original_page']); m['status']='complete' if len(entries)==len(doc) and not errors else 'partial'; m['errors']=errors
     save(mp,m)  # per-page checkpoint, including failures
+    if on_page: on_page(d['document_id'],n,'converted' if n in entries else 'failed')
    save(mp,m)  # also persist metadata updates when every page was cached
  return stats,errors
