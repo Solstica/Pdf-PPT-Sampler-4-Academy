@@ -8,20 +8,22 @@ from .validator import validate
 from .progress import progress,STATES
 from .printer import print_pages
 from .manifest import save,page_numbers
-from .terminal_progress import PageProgress, LANGUAGE, default_language, tr, stage, human_bytes
+from .terminal_progress import PageProgress, LANGUAGE, default_language, tr, stage, human_bytes, PROGRESS_MODE, default_progress_mode
 
 def main(argv=None):
- p=argparse.ArgumentParser(prog='academy'); p.add_argument('--lang',choices=['en','zh'],default=default_language()); p.add_argument('--workspace',type=Path,default=Path.cwd()); subs=p.add_subparsers(dest='command',required=True)
+ p=argparse.ArgumentParser(prog='academy'); p.add_argument('--lang',choices=['en','zh'],default=default_language()); p.add_argument('--progress',choices=['auto','live','log'],default=default_progress_mode()); p.add_argument('--workspace',type=Path,default=Path.cwd()); subs=p.add_subparsers(dest='command',required=True)
  s=subs.add_parser('init'); s.add_argument('course',type=Path)
  s=subs.add_parser('ingest'); s.add_argument('--new-version',action='store_true')
- s=subs.add_parser('render'); s.add_argument('--lang',choices=['en','zh'],default=argparse.SUPPRESS); s.add_argument('--document'); s.add_argument('--group'); s.add_argument('--input',type=Path); s.add_argument('--pages'); s.add_argument('--preset'); s.add_argument('--long-edge',type=int); s.add_argument('--quality',type=int); s.add_argument('--format',choices=['webp','png','jpg','jpeg']); s.add_argument('--force',action='store_true')
+ s=subs.add_parser('render'); s.add_argument('--lang',choices=['en','zh'],default=argparse.SUPPRESS); s.add_argument('--progress',choices=['auto','live','log'],default=argparse.SUPPRESS); s.add_argument('--document'); s.add_argument('--group'); s.add_argument('--input',type=Path); s.add_argument('--pages'); s.add_argument('--preset'); s.add_argument('--long-edge',type=int); s.add_argument('--quality',type=int); s.add_argument('--format',choices=['webp','png','jpg','jpeg']); s.add_argument('--force',action='store_true')
  subs.add_parser('validate'); subs.add_parser('index')
  s=subs.add_parser('progress'); s.add_argument('--page'); s.add_argument('--state',choices=STATES); s.add_argument('--reason')
  s=subs.add_parser('batch'); s.add_argument('--document',required=True); s.add_argument('--size',type=int,default=15); s.add_argument('--pages')
  s=subs.add_parser('print'); s.add_argument('--pages'); s.add_argument('--list',type=Path); s.add_argument('--output',type=Path,default=Path('print/selected.pdf'))
  a=p.parse_args(argv); root=a.workspace.resolve()
  if a.lang not in ('en','zh'): p.error('ACADEMY_SAMPLER_LANG must be en or zh')
+ if a.progress not in ('auto','live','log'): p.error('ACADEMY_SAMPLER_PROGRESS must be auto, live or log')
  token=LANGUAGE.set(a.lang)
+ progress_token=PROGRESS_MODE.set(a.progress)
  try:
   if a.command=='init': init(a.course.resolve()); print(a.course); return 0
   c=config(root)
@@ -63,5 +65,7 @@ def main(argv=None):
     requested=json.loads(text) if a.list.suffix=='.json' else re.findall(r'\b[A-Z][A-Z0-9]*-P\d{3,}\b',text)
    print(print_pages(root,[s.strip() for s in requested],root/a.output)); return 0
  except (ValueError,OSError,KeyError,RuntimeError) as exc: print(tr('Error:','错误:'),exc); return 1
- finally: LANGUAGE.reset(token)
+ finally:
+  PROGRESS_MODE.reset(progress_token)
+  LANGUAGE.reset(token)
 if __name__=='__main__': raise SystemExit(main())

@@ -2,6 +2,17 @@
 
 确定性的课件图像工具 + 独立的多模态 AI 复习协议。Python 不依赖大模型 API，不 OCR、不提取文字、不总结。支持 Python 3.10+；Windows 为主要环境，PDF 处理使用跨平台 PyMuPDF/Pillow。
 
+## V1.2.4 单行动态进度
+
+~~~bash
+trans PP --progress live
+trans PP --progress log
+export ACADEMY_SAMPLER_PROGRESS=live
+academy render --progress live
+~~~
+
+auto（默认）识别普通终端及 Windows MSYS/Cygwin PTY；live 强制单行刷新，log 强制普通换行日志。根据可检测的终端宽度精简显示，优先保留页数、百分比和 ETA，空间足够时显示大小、速度及计数。终端宽度不可读取时使用 COLUMNS 或 80 列。最终仍保留完整阶段摘要。Git 写入和暂存进度同样单行更新。无需额外依赖；日志重定向建议用 log。修复 Git UTC Z/+00:00 时间格式兼容性。
+
 ## V1.2.3 每份资料的 README
 
 trans 在每个已发布文档目录生成 README.md，包含原始文件名、原始相对路径、稳定文档 ID、首次归档时间（UTC）、页数和源文件 SHA256，附 manifest.json 链接。首次归档时间采用 manifest 首次进入 Git 历史的提交时间，不是 GitHub 服务器接收时间。升级后下一次 trans CODE 自动补齐旧文档 README，时间从 Git 历史恢复，缺少历史则明确标记未知。已有 README 不覆盖，重复同步不刷新时间；支持根目录和多级分组。原始 PDF/PPT 仍不上传。

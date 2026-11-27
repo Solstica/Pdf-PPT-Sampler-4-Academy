@@ -12,7 +12,7 @@ from .document_readme import render_document_readme
 import pymupdf as fitz
 import yaml
 from . import cli
-from .terminal_progress import PageProgress, GitProgress, duration, stage, human_bytes, tr, LANGUAGE, write_text
+from .terminal_progress import PageProgress, GitProgress, duration, stage, human_bytes, tr, LANGUAGE, write_text, ProgressLine
 from .config import config
 from .converters import pdf_source
 from .manifest import inside, load, save, sha, source_directory, document_folder
@@ -53,6 +53,7 @@ def push_live(root, branch):
                "HEAD:refs/heads/" + branch]
     env = dict(os.environ, LC_ALL="C", LANG="C")
     annotation = GitProgress()
+    live = ProgressLine(sys.stderr)
     started = time.monotonic()
     with subprocess.Popen(command, stderr=subprocess.PIPE, env=env) as proc:
         pending = bytearray()
@@ -63,7 +64,7 @@ def push_live(root, branch):
                 return
             line = annotation.annotate(pending.decode("utf-8", errors="replace"))
             pending.clear()
-            write_text(sys.stderr, line + ("\r" if ending == 13 and sys.stderr.isatty() else "\n"))
+            live.write(line, final=ending != 13)
         try:
             while True:
                 chunk = proc.stderr.read1(8192)
@@ -75,8 +76,10 @@ def push_live(root, branch):
                     else:
                         pending.append(byte)
             emit(10)
+            live.finish()
             code = proc.wait()
         except BaseException:
+            live.finish()
             proc.terminate()
             proc.wait()
             raise
@@ -317,7 +320,7 @@ def first_archive_commit(target, manifest_path, new_commit_time):
     dates = result.stdout.splitlines()
     if not dates:
         return None  # history unavailable; do not invent an original upload date
-    return datetime.fromisoformat(dates[0]).astimezone(timezone.utc).isoformat(timespec="seconds")
+    return datetime.fromisoformat(dates[0].replace("Z", "+00:00")).astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
 def stage_content(base, target, commit_time=None):
@@ -405,10 +408,14 @@ def stage_content(base, target, commit_time=None):
     staged_bytes = sum(inside(target, rel).stat().st_size for rel in allowed)
     stage(f"Staging {len(allowed)} changed files ({human_bytes(staged_bytes)} logical size)...",
           f"暂存 {len(allowed)} 个变更文件 (逻辑大小 {human_bytes(staged_bytes)})...")
-    for i, rel in enumerate(sorted(allowed), 1):
-        git(target, "add", "-f", "--", rel)
-        if i % 25 == 0 or i == len(allowed):
-            stage(f"  Staged {i}/{len(allowed)} files", f"  已暂存 {i}/{len(allowed)} 个文件")
+    staging = ProgressLine(sys.stderr)
+    try:
+        for i, rel in enumerate(sorted(allowed), 1):
+            git(target, "add", "-f", "--", rel)
+            if i % 25 == 0 or i == len(allowed):
+                staging.write(tr(f"  Staged {i}/{len(allowed)} files", f"  已暂存 {i}/{len(allowed)} 个文件"), final=i == len(allowed))
+    finally:
+        staging.finish()
     staged = git(target, "diff", "--cached", "--name-only", "-z").stdout.split("\0")
     if any(p not in allowed for p in staged if p):
         raise ValueError("Unexpected staged path; no push performed")

@@ -4,6 +4,10 @@ A deterministic Python slide pipeline and a separate multimodal study protocol. 
 
 Install with `pip install -e ".[test]"`; Windows Office support: `pip install -e ".[test,windows]"`. Run `academy init my-course`, enter the directory, put source files under raw, then run `academy ingest`, `academy render`, `academy validate`, `academy index`, `academy progress`. Use `academy --workspace PATH COMMAND` from elsewhere. Every command has --help and failures return nonzero.
 
+## V1.2.4: single-line live progress
+
+Use trans PP --progress live to force one-line refresh in Git Bash, --progress log for plain logs, or set ACADEMY_SAMPLER_PROGRESS=live. Default auto detects regular terminals and Windows MSYS/Cygwin PTYs. Width-aware rendering prioritizes percentage, counts and ETA; additional details appear when space permits. Git object progress and staging use the same live line. No new dependencies. UTC Git timestamp parsing accepts both Z and +00:00.
+
 ## V1.2.3: per-document source README
 
 Each published document receives a README.md containing original filename and relative path, stable document ID, first archive Git commit timestamp in UTC, page count, source SHA256, and a manifest link. This is not GitHub server receipt time. The next trans sync backfills legacy documents from their Git history; missing history is marked unknown. Existing READMEs are preserved. Works with nested groups and does not upload raw documents.

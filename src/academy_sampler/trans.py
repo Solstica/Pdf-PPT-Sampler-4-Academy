@@ -3,7 +3,7 @@ import argparse
 import json
 from .trans_registry import PRESETS, code_of, courses, lock, register, state_root
 from .trans_publish import publish
-from .terminal_progress import LANGUAGE, default_language, tr
+from .terminal_progress import LANGUAGE, default_language, tr, PROGRESS_MODE, default_progress_mode
 
 
 def main(argv=None):
@@ -12,6 +12,7 @@ def main(argv=None):
     parser.add_argument("first", nargs="?", help="raw folder or registered course code")
     parser.add_argument("second", nargs="?", help="course code or GitHub repository URL")
     parser.add_argument("-pre", "--preset-number", type=int, choices=sorted(PRESETS))
+    parser.add_argument("--progress", choices=("auto", "live", "log"), default=default_progress_mode(), help="auto terminal detection, forced single-line live, or plain logs")
     parser.add_argument("--lang", choices=("en", "zh"), default=default_language(), help="terminal display language (default: en or ACADEMY_SAMPLER_LANG)")
     parser.add_argument("--group", metavar="FOLDER", help="sync only this raw subfolder and its descendants (or . for root files)")
     parser.add_argument("--list", action="store_true", help="list locally registered courses")
@@ -21,8 +22,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.lang not in ('en', 'zh'):
         parser.error('ACADEMY_SAMPLER_LANG must be en or zh')
+    if args.progress not in ('auto', 'live', 'log'):
+        parser.error('ACADEMY_SAMPLER_PROGRESS must be auto, live or log')
     home = state_root()
     token = LANGUAGE.set(args.lang)
+    progress_token = PROGRESS_MODE.set(args.progress)
     try:
         with lock(home):
             data = courses(home)
@@ -67,6 +71,7 @@ def main(argv=None):
         print(tr("Error:", "错误:"), exc)
         return 1
     finally:
+        PROGRESS_MODE.reset(progress_token)
         LANGUAGE.reset(token)
 
 

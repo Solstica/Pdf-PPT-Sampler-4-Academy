@@ -254,7 +254,9 @@ def test_document_readme_backfill_and_stability(setup, tmp_path, monkeypatch):
     original = readme.read_text(encoding="utf8")
     date = pub.git(target, "log", "-1", "--format=%cI").stdout.strip()
     assert "原始课件.pdf" in original
-    assert date in original
+    from datetime import datetime, timezone
+    normalized = datetime.fromisoformat(date.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat(timespec="seconds")
+    assert normalized in original
     assert "total_pages: 2" in original
     assert "manifest.json" in original
     head = pub.git(target, "rev-parse", "HEAD").stdout.strip()

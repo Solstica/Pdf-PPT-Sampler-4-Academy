@@ -119,3 +119,50 @@ def test_size_estimate_by_preset_and_chinese():
         assert human_bytes(1024) == "1.00 KiB"
     finally:
         LANGUAGE.reset(token)
+
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+@pytest.mark.parametrize("columns", [60, 80, 120, 200])
+def test_live_progress_stays_on_one_line(monkeypatch, lang, columns):
+    from academy_sampler import terminal_progress as tp
+    stream = io.StringIO()
+    monkeypatch.setattr(tp, "terminal_columns", lambda _: columns)
+    mode = tp.PROGRESS_MODE.set("live")
+    language = tp.LANGUAGE.set(lang)
+    tick = [0.]
+    try:
+        with PageProgress(4, stream=stream, clock=lambda: tick[0],
+                          documents={"CM01": (4, 3)}, source_bytes=10**6) as bar:
+            for page in range(1, 5):
+                tick[0] += 1
+                bar.record_size("CM01", page, 40000)
+                bar.advance("CM01", page, "converted")
+            ongoing = stream.getvalue()
+            assert "\r" in ongoing and "\n" not in ongoing
+            for frame in ongoing.split("\r"):
+                assert tp.display_width(frame) < columns
+        out = stream.getvalue()
+        assert out.count("\n") == 2
+        assert "100.0%" in out and "4/4" in out
+        assert "ETA 00:00:00" in out
+    finally:
+        tp.LANGUAGE.reset(language)
+        tp.PROGRESS_MODE.reset(mode)
+
+
+def test_auto_and_log_modes(monkeypatch):
+    from academy_sampler import terminal_progress as tp
+    stream = io.StringIO()
+    monkeypatch.setattr(tp, "msys_pty", lambda _: True)
+    monkeypatch.setenv("TERM", "xterm")
+    assert tp.live_enabled(stream)
+    token = tp.PROGRESS_MODE.set("log")
+    try:
+        assert not tp.live_enabled(stream)
+        line = tp.ProgressLine(stream)
+        line.write("first")
+        line.write("second", final=True)
+        assert stream.getvalue() == "first\nsecond\n"
+    finally:
+        tp.PROGRESS_MODE.reset(token)
