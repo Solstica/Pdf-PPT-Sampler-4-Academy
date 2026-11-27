@@ -156,3 +156,30 @@ def test_invalid_source_no_push(setup, monkeypatch):
     monkeypatch.setattr(pub, "private_target", lambda _: ("example/course", "unused", "main"))
     assert trans.main(["CM", "git@github.com:example/course.git"]) == 1
     assert not (course_dir(home, "CM") / "publication").exists()
+
+
+def test_outgoing_unexpected_commit(setup, tmp_path, monkeypatch):
+    home, raw = setup
+    pdf(raw / "a.pdf")
+    assert trans.main([str(raw), "CM", "-pre", "5"]) == 0
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "--initial-branch=main", str(remote)], check=True, capture_output=True)
+    url = "git@github.com:example/course.git"
+    monkeypatch.setattr(pub, "private_target", lambda _: ("example/course", str(remote), "main"))
+    assert trans.main(["CM", url]) == 0
+    target = course_dir(home, "CM") / "publication"
+    head = pub.git(target, "rev-parse", "HEAD").stdout.strip()
+    (target / "secret.txt").write_text("synthetic secret", encoding="utf8")
+    pub.git(target, "add", "--", "secret.txt")
+    pub.git(target, "commit", "-m", "Unexpected local change")
+    assert trans.main(["CM", url]) == 1
+    assert pub.git(remote, "rev-parse", "refs/heads/main").stdout.strip() == head
+
+
+def test_installed_console_entrypoint():
+    import sysconfig
+    import sys
+    scripts = Path(sysconfig.get_path("scripts"))
+    exe = scripts / ("trans.exe" if sys.platform == "win32" else "trans")
+    result = subprocess.run([str(exe), "--help"], capture_output=True, text=True)
+    assert result.returncode == 0 and "preset-number" in result.stdout

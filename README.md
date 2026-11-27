@@ -10,7 +10,7 @@
 python -m pip install --user pipx
 python -m pipx ensurepath
 # Reopen the shell after ensurepath.
-pipx install "git+https://github.com/Solstica/Pdf-PPT-Sampler-4-Academy.git[windows]"
+pipx install "academy-sampler[windows] @ git+https://github.com/Solstica/Pdf-PPT-Sampler-4-Academy.git"
 gh auth login
 trans "D:/Courses/Material/raw" CM -pre 3
 trans CM git@github.com:YOUR_ACCOUNT/PRIVATE-COURSE.git
