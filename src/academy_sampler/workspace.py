@@ -21,6 +21,8 @@ def index(root):
   registry.append(f"- {ident}: {d['original_filename']} → {d['current_path']} ({d['total_pages']} pages)" + (f" — group: {d['source_group']}" if 'source_group' in d else ''))
   if m is None: continue
   relative=source_directory(d).removeprefix("sources/"); manifests.append(m); md.extend([f"## {ident} — {d['original_filename']}",f"{d['total_pages']} pages; [manifest]({quote(relative)}/manifest.json)"])
+  if "source_group" in m or "source_directory" in m:
+   md.append(f"[Source metadata / 原始资料信息]({quote(relative)}/README.md)")
   md.extend(f"- [{p['page_id']}]({quote(relative)}/{quote(p['path'])}) — `{p['repository_path']}`" for p in m['pages'])
  save(root/'sources/index.json',{'schema_version':1,'updated_at':now(),'documents':manifests})
  (root/'sources/INDEX.md').write_text('\n'.join(md)+'\n',encoding='utf8'); (root/'sources/SOURCE_REGISTRY.md').write_text('\n'.join(registry)+'\n',encoding='utf8')

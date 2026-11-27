@@ -237,3 +237,38 @@ def test_ambiguous_move_refused(setup):
     (raw / "CM01.pdf").rename(raw / "B/CM01.pdf")
     assert trans.main([str(raw), "CM"]) == 1
     assert len(courses(home)["CM"]["documents"]) == 1
+
+
+
+def test_document_readme_backfill_and_stability(setup, tmp_path, monkeypatch):
+    home, raw = setup
+    pdf(raw / "原始课件.pdf")
+    assert trans.main([str(raw), "CM", "-pre", "5"]) == 0
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "--initial-branch=main", str(remote)], check=True, capture_output=True)
+    url = "git@github.com:example/course.git"
+    monkeypatch.setattr(pub, "private_target", lambda _: ("example/course", str(remote), "main"))
+    assert trans.main(["CM", url]) == 0
+    target = course_dir(home, "CM") / "publication"
+    readme = target / "sources/CM01/README.md"
+    original = readme.read_text(encoding="utf8")
+    date = pub.git(target, "log", "-1", "--format=%cI").stdout.strip()
+    assert "原始课件.pdf" in original
+    assert date in original
+    assert "total_pages: 2" in original
+    assert "manifest.json" in original
+    head = pub.git(target, "rev-parse", "HEAD").stdout.strip()
+    assert trans.main(["CM"]) == 0
+    assert pub.git(target, "rev-parse", "HEAD").stdout.strip() == head
+    # Emulate an earlier archive missing its README. Backfill must recover
+    # the first manifest commit date, not the new sync or deletion date.
+    pub.git(target, "rm", "--", "sources/CM01/README.md")
+    pub.git(target, "commit", "-m", "Simulate legacy source directory")
+    pub.git(target, "push", "origin", "main")
+    assert trans.main(["CM"]) == 0
+    assert readme.read_text(encoding="utf8") == original
+    pdf(raw / "Notes" / "new.pdf", "new")
+    assert trans.main(["CM", "--group", "Notes"]) == 0
+    nested = target / "sources/by-group/Notes/CM02/README.md"
+    assert nested.exists() and "new.pdf" in nested.read_text(encoding="utf8")
+    assert readme.read_text(encoding="utf8") == original

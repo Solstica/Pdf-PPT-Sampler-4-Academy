@@ -7,6 +7,8 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from datetime import datetime, timezone
+from .document_readme import render_document_readme
 import pymupdf as fitz
 import yaml
 from . import cli
@@ -33,8 +35,8 @@ def repo_name(url):
     return (match[1] + "/" + match[2]).lower()
 
 
-def run(args, cwd=None, allow_failure=False):
-    p = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
+def run(args, cwd=None, allow_failure=False, env=None):
+    p = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     if p.returncode and not allow_failure:
         raise RuntimeError(args[0] + " failed: " + (p.stderr or p.stdout).strip())
@@ -306,7 +308,20 @@ def write_allowed(target, rel, content, allowed, only_new=False):
     allowed.add(rel)
 
 
-def stage_content(base, target):
+def first_archive_commit(target, manifest_path, new_commit_time):
+    """Use the first addition of this manifest, not mtime or the current sync date."""
+    if not (target / manifest_path).is_file():
+        return new_commit_time
+    result = git(target, "log", "--reverse", "--diff-filter=A", "--format=%cI",
+                 "HEAD", "--", ":(literal)" + manifest_path)
+    dates = result.stdout.splitlines()
+    if not dates:
+        return None  # history unavailable; do not invent an original upload date
+    return datetime.fromisoformat(dates[0]).astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def stage_content(base, target, commit_time=None):
+    commit_time = commit_time or datetime.now(timezone.utc).isoformat(timespec="seconds")
     for dirname in ("sources", "review", "protocols"):
         folder = target / dirname
         if folder.is_symlink() or (folder.exists() and any(p.is_symlink() for p in folder.rglob("*"))):
@@ -341,7 +356,18 @@ def stage_content(base, target):
     for name in ("source_registry.json", "index.json", "INDEX.md", "SOURCE_REGISTRY.md", "GROUPS.md"):
         put("sources/" + name)
     for d in load(base / "sources/index.json")["documents"]:
-        put(source_directory(d) + "/manifest.json")
+        directory = source_directory(d)
+        manifest_path = directory + "/manifest.json"
+        readme_path = directory + "/README.md"
+        # Capture the existing manifest history before creating any new files.
+        if not inside(target, readme_path).exists():
+            first = first_archive_commit(target, manifest_path, commit_time)
+            content = render_document_readme(d, first).encode("utf-8")
+            local_readme = inside(base, readme_path)
+            local_readme.parent.mkdir(parents=True, exist_ok=True)
+            local_readme.write_bytes(content)
+            write_allowed(target, readme_path, content, allowed, only_new=True)
+        put(manifest_path)
         for p in d["pages"]:
             rel = p["repository_path"]
             if rel != source_directory(d) + "/" + p["path"] or not re.fullmatch(r"[0-9]{3,}\.(webp|png|jpg)", p["path"]):
@@ -399,6 +425,7 @@ def verify_outgoing(target, branch, base):
                "sources/index.json", "sources/source_registry.json", "sources/GROUPS.md"}
     for d in load(base / "sources/index.json")["documents"]:
         allowed.add(source_directory(d) + "/manifest.json")
+        allowed.add(source_directory(d) + "/README.md")
         allowed.update(p["repository_path"] for p in d["pages"])
     for dirname in ("review", "protocols"):
         allowed.update(p.relative_to(base).as_posix() for p in (base / dirname).rglob("*.md"))
@@ -442,11 +469,15 @@ def publish(home, data, code, url, preset=None, group=None):
         target, branch = checkout(home, code, remote, branch)
         base = workspace(home, code, entry, group, target)
     stage("Preparing publication files...", "准备发布文件...")
-    stage_content(base, target)
+    commit_time = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    stage_content(base, target, commit_time)
     diff = git(target, "diff", "--cached", "--quiet", allow_failure=True).returncode
     if diff == 1:
         stage("Creating Git commit...", "创建 Git 提交...")
-        git(target, "commit", "-m", "Update course visual archive " + code)
+        # The timestamp written for new READMEs is the timestamp of this archive commit.
+        env = dict(os.environ, GIT_COMMITTER_DATE=commit_time)
+        run(["git", "-C", str(target), "commit", "--date=" + commit_time,
+             "-m", "Update course visual archive " + code], env=env)
     elif diff != 0:
         raise RuntimeError("Cannot inspect staged changes")
     verify_outgoing(target, branch, base)

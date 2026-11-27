@@ -4,6 +4,10 @@ A deterministic Python slide pipeline and a separate multimodal study protocol. 
 
 Install with `pip install -e ".[test]"`; Windows Office support: `pip install -e ".[test,windows]"`. Run `academy init my-course`, enter the directory, put source files under raw, then run `academy ingest`, `academy render`, `academy validate`, `academy index`, `academy progress`. Use `academy --workspace PATH COMMAND` from elsewhere. Every command has --help and failures return nonzero.
 
+## V1.2.3: per-document source README
+
+Each published document receives a README.md containing original filename and relative path, stable document ID, first archive Git commit timestamp in UTC, page count, source SHA256, and a manifest link. This is not GitHub server receipt time. The next trans sync backfills legacy documents from their Git history; missing history is marked unknown. Existing READMEs are preserved. Works with nested groups and does not upload raw documents.
+
 ## V1.2.2: bilingual progress and size estimates
 
 Use trans PP --lang zh or --lang en, or set ACADEMY_SAMPLER_LANG=zh. academy render --lang zh also works. English is the default. Tool progress and known Git progress prefixes are localized; raw errors and machine-readable JSON are preserved. The page display reports source bytes, validated image bytes including cache hits, newly rendered bytes, and an approximate final image size using per-document sample means or same-preset samples. Unknown estimates are displayed as --. Final summaries report archive image size and selected image/source ratio. Staged logical file sizes and Git's native pack byte counts are distinct and exclude complete repository history and local mirror overhead.

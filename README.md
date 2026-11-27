@@ -2,6 +2,10 @@
 
 确定性的课件图像工具 + 独立的多模态 AI 复习协议。Python 不依赖大模型 API，不 OCR、不提取文字、不总结。支持 Python 3.10+；Windows 为主要环境，PDF 处理使用跨平台 PyMuPDF/Pillow。
 
+## V1.2.3 每份资料的 README
+
+trans 在每个已发布文档目录生成 README.md，包含原始文件名、原始相对路径、稳定文档 ID、首次归档时间（UTC）、页数和源文件 SHA256，附 manifest.json 链接。首次归档时间采用 manifest 首次进入 Git 历史的提交时间，不是 GitHub 服务器接收时间。升级后下一次 trans CODE 自动补齐旧文档 README，时间从 Git 历史恢复，缺少历史则明确标记未知。已有 README 不覆盖，重复同步不刷新时间；支持根目录和多级分组。原始 PDF/PPT 仍不上传。
+
 ## V1.2.2 双语进度与容量统计
 
 ~~~bash
