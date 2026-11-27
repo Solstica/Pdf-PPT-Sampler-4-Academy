@@ -151,7 +151,10 @@ def checkout(home, code, url, default_branch):
         else:
             git(target, "merge", "--ff-only", "origin/" + branch)
     elif not head.returncode and default_branch is not None:
-        raise ValueError("Expected remote default branch is missing")
+        # A first publish may have committed locally but failed before creating the branch.
+        # If any other remote branch exists, the missing default branch is unsafe.
+        if git(target, "for-each-ref", "--format=%(refname)", "refs/remotes/origin").stdout.strip():
+            raise ValueError("Expected remote default branch is missing")
     return target, branch
 
 
@@ -181,6 +184,10 @@ def write_allowed(target, rel, content, allowed, only_new=False):
 
 
 def stage_content(base, target):
+    for dirname in ("sources", "review", "protocols"):
+        folder = target / dirname
+        if folder.is_symlink() or (folder.exists() and any(p.is_symlink() for p in folder.rglob("*"))):
+            raise ValueError("Symlink in publication tree: " + dirname)
     reg = load(base / "sources/source_registry.json")
     remote_reg = load(target / "sources/source_registry.json")
     if remote_reg is not None:

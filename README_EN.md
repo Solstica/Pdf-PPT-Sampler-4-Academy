@@ -1,8 +1,21 @@
-# Pdf-PPT-Sampler-4-Academy 1.0
+# Pdf-PPT-Sampler-4-Academy 1.1 (release candidate)
 
 A deterministic Python slide pipeline and a separate multimodal study protocol. No model API, OCR, extracted text, or generated summaries. Python 3.10+, Windows first; PDF processing is portable to Linux/macOS.
 
 Install with `pip install -e ".[test]"`; Windows Office support: `pip install -e ".[test,windows]"`. Run `academy init my-course`, enter the directory, put source files under raw, then run `academy ingest`, `academy render`, `academy validate`, `academy index`, `academy progress`. Use `academy --workspace PATH COMMAND` from elsewhere. Every command has --help and failures return nonzero.
+
+## trans quick start
+
+Install Git, GitHub CLI and pipx; run gh auth login. Install this repository with pipx (Windows Office support: pipx install ".[windows]"). Reopen your shell to refresh PATH.
+
+~~~bash
+trans "/path/to/raw" CM -pre 3
+trans CM git@github.com:OWNER/PRIVATE-COURSE.git
+trans --list
+trans --show CM
+~~~
+
+Registration renames source documents in place, preserves original names and hashes, and persists the local course code. Publication mirrors originals locally, renders and validates pages, preserves existing remote review files, and commits/pushes only allowlisted files to a verified private repository. Presets 1–5: 1920/Q90, 1600/Q80, 1280/Q75, 1024/Q70, 800/Q60. See the Chinese README for dry-run, relocation, recovery, disk space and compatibility details.
 
 Configure groups, unique uppercase prefixes, optional teachers, file order, exam modes and quality presets in course.yaml. Original names, paths and bytes are untouched. IDs persist across appends and detectable moves; duplicates are reported, never deleted. Changed content requires `ingest --new-version`; retain archived originals for old references. IDs are not chapter numbers.
 
@@ -16,6 +29,6 @@ Follow AGENTS.md and protocols. Actual image inspection is mandatory. Reading st
 
 PPT/PPTX uses Windows PowerPoint first, LibreOffice fallback (soffice on PATH), otherwise asks for manual PDF export. Hidden-slide/page-count and font review warnings are recorded. Office fidelity needs visual checks.
 
-Keep private course workspaces separate from the public tooling repo. raw/sources/review/print/reports and source maps are ignored by default. No automatic push. Before opting into private course sync, verify repository visibility and inspect staged data yourself.
+Keep private course workspaces separate from the public tooling repo. raw/sources/review/print/reports and source maps are ignored by default. The legacy academy command never pushes automatically. Explicit trans publication is the exception and verifies PRIVATE visibility. Before opting into private course sync, verify repository visibility and inspect staged data yourself.
 
 Run `python -m pytest -q`. Generate a synthetic demo with `python examples/synthetic_demo.py OUTPUT`. See TEST_RESULTS.md, docs/MIGRATION.md and docs/LIMITATIONS.md. No real teaching material is shipped.

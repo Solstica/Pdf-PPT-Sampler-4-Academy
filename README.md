@@ -1,6 +1,44 @@
-# Pdf-PPT-Sampler-4-Academy 1.0
+# Pdf-PPT-Sampler-4-Academy 1.1 (release candidate)
 
 确定性的课件图像工具 + 独立的多模态 AI 复习协议。Python 不依赖大模型 API，不 OCR、不提取文字、不总结。支持 Python 3.10+；Windows 为主要环境，PDF 处理使用跨平台 PyMuPDF/Pillow。
+
+## V1.1 快速命令（trans）
+
+安装 Git、GitHub CLI（gh）、Python 3.10+。先完成 SSH 或 HTTPS Git 凭据配置；使用 gh auth login 授权查询仓库可见性。工具不会读取或上传令牌。
+
+~~~bash
+python -m pip install --user pipx
+python -m pipx ensurepath
+# Reopen the shell after ensurepath.
+pipx install "git+https://github.com/Solstica/Pdf-PPT-Sampler-4-Academy.git[windows]"
+gh auth login
+trans "D:/Courses/Material/raw" CM -pre 3
+trans CM git@github.com:YOUR_ACCOUNT/PRIVATE-COURSE.git
+~~~
+
+升级已有 pipx 安装：pipx upgrade academy-sampler。Windows Git Bash 可用 D:/... 路径；Linux/macOS 省略 windows extra。若 Bash 中已有同名 translate-shell 命令，使用 type -a trans 检查 PATH 顺序，优先选择本工具的 pipx 可执行文件。Windows Git Bash 实际全局 PATH 仍需本机验收。
+
+第一条命令只登记课程并在原目录安全重命名 PDF/PPT/PPTX，保留子目录及原始文件名映射；第二条命令自动发现新增文件、渲染、完整性校验并向已存在的 Private GitHub 仓库普通 push。不会发送 raw、打印 PDF 或全局本地注册表。每个课件有稳定编号，如 CM01-P003。已生成的 GitHub 复习稿及阅读状态不会被覆盖。
+
+| -pre | 长边 | WebP质量 |
+|---|---:|---:|
+|1|1920|90|
+|2|1600|80|
+|3（默认）|1280|75|
+|4|1024|70|
+|5|800|60|
+
+~~~bash
+trans --list
+trans --show CM
+trans "D:/Courses/Material/raw" CM --dry-run
+trans "D:/Moved/raw" CM --relocate
+trans CM git@github.com:YOUR_ACCOUNT/PRIVATE-COURSE.git -pre 4
+~~~
+
+在任意目录均可执行。课程注册表在 ~/.academy-sampler/courses.json（ACADEMY_SAMPLER_HOME 可覆盖）。原件由本地 raw 管理；另有一份哈希校验的本地镜像以复用原 academy 工作区与矢量打印。注册使用同目录独占硬链接再删除旧名称，NTFS、常见 Linux/macOS 文件系统可用；不支持硬链接的文件系统会安全失败。执行中断后重复原命令恢复 journal，不要手工删除 journal 或中途修改文件。原件内容改变时拒绝沿用旧 ID；恢复原件并把新版本作为独立新文件加入。已有课程只能绑定同一远程，旧版课程仓库若 ID/manifest 格式冲突须迁移后再发布。
+
+发布前后核实 GitHub 可见性，公开仓库或无法验证时终止。推送失败时保留本地提交，普通重试；分支冲突或未提交改动需要人工核对，不自动重置。只有经过完整验证的 manifest 及其列出的图像进入发布清单；复习协议模板缺失时才补充。旧 academy 命令继续可用。详见 docs/V1.1_TRANS_SPEC.md 和 docs/LIMITATIONS.md。
 
 ## 安装与快速开始
 
@@ -58,6 +96,6 @@ JSON 打印清单为字符串数组；Markdown 按出现顺序提取有效格式
 
 Windows 优先本机 PowerPoint（安装 windows extra）；其他平台或 PowerPoint 不可用时使用 PATH 中 LibreOffice，macOS 可安装 LibreOffice 并将 soffice 加入 PATH。包含隐藏页；记录页数差异、备用导出和字体人工核验警告。无法可靠导出则提示手动导出 PDF。临时文件自动清理。字体、动画和动态对象无法保证与源演示播放一致，须目视核对。
 
-公开工具仓库与私人课程工作区必须分离。默认忽略 raw、sources、review、print、reports、来源映射与真实复习材料，不自动 push。若自行同步：先核实目标仓库 private、审查 staged 文件和授权，再自行选择提交；工具不会修改可见性。
+公开工具仓库与私人课程工作区必须分离。默认忽略 raw、sources、review、print、reports、来源映射与真实复习材料，旧版 academy 不自动 push；显式 trans 发布命令例外，必须验证私人仓库。若自行同步：先核实目标仓库 private、审查 staged 文件和授权，再自行选择提交；工具不会修改可见性。
 
 `python -m pytest -q` 只生成合成 PDF；`python examples/synthetic_demo.py OUTPUT` 创建可复现演示。验收见 TEST_RESULTS.md，迁移见 docs/MIGRATION.md，限制见 docs/LIMITATIONS.md。

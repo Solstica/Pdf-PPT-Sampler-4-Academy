@@ -13,3 +13,7 @@ During test setup, the host system temporary directory denied access; acceptance
 
 
 最终结果：5 passed in 22.61s。Editable install、wheel 构建及初始化资源打包检查通过；合成 demo 的 2 份 PDF / 8 页 CLI 完整流程通过。
+
+## V1.1 release candidate
+
+New synthetic tests in tests/test_trans.py cover persistent registration, natural numbering, dry run, original hashes, append, relocation, rename journal recovery, privacy rejection, local bare remote publication, no-op reruns, remote AI review preservation, preset change, and malformed PDF rejection. CI is the verification source for this candidate; do not treat the V1.0 test result as a V1.1 result. Real private GitHub push, Office export and Windows Git Bash global installation have not yet been exercised.
