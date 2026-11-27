@@ -26,13 +26,13 @@ def main(argv=None):
   if a.command=='render':
    docs=registered(root)
    if a.document: docs=[d for d in docs if d['document_id']==a.document]
-   if a.group: docs=[d for d in docs if d['category']==a.group]
+   if a.group: docs=[d for d in docs if d['category']==a.group or d.get('source_group')==a.group]
    if a.input: docs=[d for d in docs if (root/d['current_path']).resolve()==(root/a.input).resolve()]
    if not docs: raise ValueError('No matching registered documents; run ingest first')
    totals={'converted':0,'skipped':0,'failed':0,'bytes':0}; errors=[]
    for d in docs:
     try:
-     stats,errs=render(root,d,parameters(c,d['category'],a.preset,a.long_edge,a.quality,a.format),a.pages,a.force)
+     stats,errs=render(root,d,parameters(c,d['category'],a.preset or (f"trans_g{d['preset_number']}" if d.get('preset_number') else None),a.long_edge,a.quality,a.format),a.pages,a.force)
      for k,v in stats.items(): totals[k]+=v
      errors.extend(f"{d['document_id']}: {e}" for e in errs)
     except Exception as exc: errors.append(d['document_id']+': '+str(exc))

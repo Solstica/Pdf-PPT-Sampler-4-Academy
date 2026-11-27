@@ -2,7 +2,7 @@ import pymupdf as fitz
 import PIL
 from PIL import Image
 from .converters import pdf_source
-from .manifest import load,save,now,sha,page_numbers
+from .manifest import load,save,now,sha,page_numbers,document_folder,source_directory
 from .registry import source
 
 def dimensions(rect,edge):
@@ -15,7 +15,7 @@ def valid_image(path,p):
  except (OSError,KeyError): return False
 
 def render(root,d,params,spec=None,force=False):
- src=source(root,d); folder=root/'sources'/d['document_id']; mp=folder/'manifest.json'
+ src=source(root,d); folder=document_folder(root,d); mp=folder/'manifest.json'
  m=load(mp,{**d,'pages':[]}); entries={p['original_page']:p for p in m['pages']}; stats={'converted':0,'skipped':0,'failed':0,'bytes':0}; errors=[]
  with pdf_source(src) as (pdf,expected,warnings):
   converter={'backend':'pdf' if src.suffix.lower()=='.pdf' else 'office-pdf','pymupdf':fitz.VersionBind,'pillow':PIL.__version__,'pipeline':1,'export_warnings':warnings}
@@ -35,11 +35,12 @@ def render(root,d,params,spec=None,force=False):
      name=f"{n:03d}.{params['format']}"; folder.mkdir(parents=True,exist_ok=True); path=folder/name; temp=folder/(name+'.tmp')
      options={'quality':params['quality'],'method':6} if params['format']=='webp' else ({'quality':params['quality'],'subsampling':0} if params['format']=='jpg' else {})
      im.save(temp,format={'webp':'WEBP','png':'PNG','jpg':'JPEG'}[params['format']],**options); temp.replace(path)
-     p={'page_id':f"{d['document_id']}-P{n:03d}",'original_page':n,'path':name,'repository_path':f"sources/{d['document_id']}/{name}",'width':im.width,'height':im.height,'bytes':path.stat().st_size,'image_sha256':sha(path),'parameters':params,'converter':converter,'status':'complete','converted_at':now()}
+     p={'page_id':f"{d['document_id']}-P{n:03d}",'original_page':n,'path':name,'repository_path':f"{source_directory(d)}/{name}",'width':im.width,'height':im.height,'bytes':path.stat().st_size,'image_sha256':sha(path),'parameters':params,'converter':converter,'status':'complete','converted_at':now()}
      if not valid_image(path,p): raise ValueError('Image validation failed')
      entries[n]=p; stats['converted']+=1; stats['bytes']+=p['bytes']
     except Exception as exc:
      stats['failed']+=1; errors.append(f'{n}: {exc}'); entries.pop(n,None)
     m['pages']=sorted(entries.values(),key=lambda p:p['original_page']); m['status']='complete' if len(entries)==len(doc) and not errors else 'partial'; m['errors']=errors
     save(mp,m)  # per-page checkpoint, including failures
+   save(mp,m)  # also persist metadata updates when every page was cached
  return stats,errors

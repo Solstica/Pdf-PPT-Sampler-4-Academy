@@ -1,5 +1,6 @@
 """Persistent course registration; originals remain the authoritative source."""
 import contextlib
+import copy
 import json
 import os
 import re
@@ -107,6 +108,63 @@ def check_records(root, records):
             raise ValueError(r["document_id"] + ": source missing or changed; restore the original bytes (from your backup or verified local mirror), then add revised content as a new file")
 
 
+def group_of(record):
+    parent = Path(record["current_path"]).parent.as_posix()
+    return parent if parent != "." else "."
+
+
+def normalize_group(value):
+    value = value.replace("\\", "/").rstrip("/")
+    if value == ".":
+        return value
+    if not value or value.startswith("/") or ":" in value or any(
+            p in {"", ".", ".."} for p in value.split("/")):
+        raise ValueError("Group must be a relative raw subfolder (or . for root files)")
+    return value
+
+
+def in_group(record, group):
+    actual = group_of(record)
+    return group is None or actual == group or (group != "." and actual.startswith(group + "/"))
+
+
+def preset_of(entry, record):
+    matches = [(g, n) for g, n in entry.get("group_presets", {}).items() if in_group(record, g)]
+    return max(matches, key=lambda item: len(item[0]))[1] if matches else entry["preset"]
+
+
+def reconcile(root, records):
+    """Detect unambiguous moves without reallocating IDs or changing public URLs."""
+    files = scan(root)
+    present = set(files)
+    claimed = set()
+    missing = []
+    for r in records:
+        rel = r["current_path"]
+        if rel in present:
+            if sha(root / rel) != r["source_sha256"]:
+                raise ValueError(r["document_id"] + ": source content changed; restore original and add the revision separately")
+            claimed.add(rel)
+        else:
+            missing.append(r)
+    if not missing:
+        return records
+    candidates = {}
+    for rel in files:
+        if rel not in claimed:
+            candidates.setdefault(sha(root / rel), []).append(rel)
+    for r in missing:
+        matches = candidates.get(r["source_sha256"], [])
+        if len(matches) != 1 or sum(x["source_sha256"] == r["source_sha256"] for x in missing) != 1:
+            raise ValueError(r["document_id"] + ": missing source or ambiguous move; restore its previous path")
+        rel = matches.pop()
+        if Path(rel).suffix.lower() != Path(r["current_path"]).suffix.lower():
+            raise ValueError(r["document_id"] + ": moved source extension differs")
+        r.setdefault("path_history", [r["current_path"]]).append(rel)
+        r["current_path"] = rel
+    return records
+
+
 def plan(root, code, records):
     files = scan(root)
     check_records(root, records)
@@ -129,7 +187,9 @@ def plan(root, code, records):
         occupied.add(dest.casefold())
         result.append({"document_id": ident, "sequence": number,
                        "original_filename": src.name, "original_path": rel,
-                       "current_path": dest, "source_sha256": sha(root / rel)})
+                       "current_path": dest, "source_sha256": sha(root / rel),
+                       "source_directory": ("sources/" + ident if src.parent.as_posix() == "."
+                                            else "sources/by-group/" + src.parent.as_posix() + "/" + ident)})
     return result
 
 
@@ -183,15 +243,17 @@ def register(home, data, raw, code, preset=None, dry_run=False, relocate=False):
     root = source_root(home, raw)
     previous = data.get(code)
     if previous:
-        entry = previous
+        entry = copy.deepcopy(previous)
         if entry["raw"] != str(root):
             if not relocate:
                 raise ValueError("Course already registered at another path; use --relocate")
             if (course_dir(home, code) / "rename-journal.json").exists():
                 raise ValueError("Recover the pending rename before relocation")
             check_records(root, entry["documents"])
-        if not dry_run:
+        if not dry_run and (course_dir(home, code) / "rename-journal.json").exists():
+            entry = previous
             apply_journal(home, code, entry, data)
+            entry = copy.deepcopy(entry)
     else:
         entry = {"raw": str(root), "preset": 3, "documents": [], "remote": None}
     for other, value in data.items():
@@ -199,6 +261,7 @@ def register(home, data, raw, code, preset=None, dry_run=False, relocate=False):
             other_root = Path(value["raw"])
             if root.is_relative_to(other_root) or other_root.is_relative_to(root):
                 raise ValueError("Raw directory overlaps registered course " + other)
+    entry["documents"] = reconcile(root, entry["documents"])
     proposed = plan(root, code, entry["documents"])
     if not proposed and not entry["documents"]:
         raise ValueError("No PDF/PPT/PPTX files found")

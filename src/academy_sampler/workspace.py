@@ -1,7 +1,7 @@
 from pathlib import Path
 from shutil import copytree
 from urllib.parse import quote
-from .manifest import load,save,now
+from .manifest import load,save,now,document_folder,source_directory
 from .registry import registered
 ASSETS=Path(__file__).parent/'assets'
 def init(path):
@@ -17,18 +17,32 @@ def init(path):
 def index(root):
  manifests=[]; md=['# Page index','']; registry=['# Source registry','']
  for d in registered(root):
-  ident=d['document_id']; m=load(root/'sources'/ident/'manifest.json')
-  registry.append(f"- {ident}: {d['original_filename']} → {d['current_path']} ({d['total_pages']} pages)")
+  ident=d['document_id']; m=load(document_folder(root,d)/'manifest.json')
+  registry.append(f"- {ident}: {d['original_filename']} → {d['current_path']} ({d['total_pages']} pages)" + (f" — group: {d['source_group']}" if 'source_group' in d else ''))
   if m is None: continue
-  manifests.append(m); md.extend([f"## {ident} — {d['original_filename']}",f"{d['total_pages']} pages; [manifest]({ident}/manifest.json)"])
-  md.extend(f"- [{p['page_id']}]({ident}/{quote(p['path'])}) — `{p['repository_path']}`" for p in m['pages'])
+  relative=source_directory(d).removeprefix("sources/"); manifests.append(m); md.extend([f"## {ident} — {d['original_filename']}",f"{d['total_pages']} pages; [manifest]({quote(relative)}/manifest.json)"])
+  md.extend(f"- [{p['page_id']}]({quote(relative)}/{quote(p['path'])}) — `{p['repository_path']}`" for p in m['pages'])
  save(root/'sources/index.json',{'schema_version':1,'updated_at':now(),'documents':manifests})
  (root/'sources/INDEX.md').write_text('\n'.join(md)+'\n',encoding='utf8'); (root/'sources/SOURCE_REGISTRY.md').write_text('\n'.join(registry)+'\n',encoding='utf8')
+
+ if any("source_group" in d for d in manifests):
+  groups={}
+  for d in manifests: groups.setdefault(d.get("source_group","."),[]).append(d)
+  lines=["# Source groups", "", "Groups reflect the current raw folder; existing published URLs remain stable.", ""]
+  for group, docs in sorted(groups.items()):
+   lines.extend(["## "+group,""])
+   for d in docs:
+    rel=source_directory(d).removeprefix("sources/")
+    lines.append(f"- [{d['document_id']} — {d['original_filename']}]({quote(rel)}/manifest.json) — {d['total_pages']} pages, G{d.get('preset_number','?')}")
+   lines.append("")
+  (root/'sources/GROUPS.md').write_text('\n'.join(lines)+'\n',encoding='utf8')
 
 def batch(root,document,size,spec=None):
  from .manifest import page_numbers
  if size<1: raise ValueError('Batch size must be positive')
- m=load(root/'sources'/document/'manifest.json')
+ d=next((d for d in registered(root) if d['document_id']==document),None)
+ if not d: raise ValueError('Unknown document')
+ m=load(document_folder(root,d)/'manifest.json')
  if not m: raise ValueError('Document has no rendered manifest')
  nums=page_numbers(spec,m['total_pages']); ps={p['original_page']:p for p in m['pages']}
  if any(n not in ps for n in nums): raise ValueError('Requested pages have not been rendered')

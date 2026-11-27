@@ -183,3 +183,57 @@ def test_installed_console_entrypoint():
     exe = scripts / ("trans.exe" if sys.platform == "win32" else "trans")
     result = subprocess.run([str(exe), "--help"], capture_output=True, text=True)
     assert result.returncode == 0 and "preset-number" in result.stdout
+
+
+def test_group_sync_and_move_preserves_paths(setup, tmp_path, monkeypatch):
+    home, raw = setup
+    pdf(raw / "a.pdf")
+    assert trans.main([str(raw), "CM", "-pre", "3"]) == 0
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "--initial-branch=main", str(remote)], check=True, capture_output=True)
+    url = "git@github.com:example/course.git"
+    monkeypatch.setattr(pub, "private_target", lambda _: ("example/course", str(remote), "main"))
+    assert trans.main(["CM", url]) == 0
+    target = course_dir(home, "CM") / "publication"
+    original_image = target / "sources/CM01/001.webp"
+    before = sha(original_image)
+    pdf(raw / "Notes" / "Week 1" / "notes.pdf")
+    pdf(raw / "Homework" / "hw.pdf")
+    assert trans.main(["CM", "--group", "Notes", "-pre", "1"]) == 0
+    # Natural ordering assigns homework CM02, notes CM03; only notes publish.
+    notes = target / "sources/by-group/Notes/Week 1/CM03/manifest.json"
+    assert notes.exists()
+    assert load(notes)["pages"][0]["width"] == 1920
+    assert not (target / "sources/by-group/Homework/CM02").exists()
+    assert sha(original_image) == before
+    assert "Notes/Week 1" in (target / "sources/GROUPS.md").read_text(encoding="utf8")
+    assert trans.main(["CM"]) == 0
+    homework = target / "sources/by-group/Homework/CM02/manifest.json"
+    assert load(homework)["pages"][0]["width"] == 1280
+    assert load(notes)["pages"][0]["width"] == 1920
+    (raw / "Moved").mkdir()
+    (raw / "CM01.pdf").rename(raw / "Moved/CM01.pdf")
+    assert trans.main(["CM"]) == 0
+    assert original_image.exists() and sha(original_image) == before
+    assert load(target / "sources/CM01/manifest.json")["source_group"] == "Moved"
+    assert load(target / "sources/CM01/manifest.json")["original_filename"] == "a.pdf"
+    assert len(courses(home)["CM"]["documents"]) == 3
+    head = pub.git(target, "rev-parse", "HEAD").stdout.strip()
+    assert trans.main(["CM"]) == 0
+    assert pub.git(target, "rev-parse", "HEAD").stdout.strip() == head
+    from academy_sampler.workspace import batch
+    base = course_dir(home, "CM") / "workspace"
+    assert batch(base, "CM03", 2)[0][0]["image"].startswith("sources/by-group/Notes/Week 1/")
+
+
+def test_ambiguous_move_refused(setup):
+    home, raw = setup
+    pdf(raw / "a.pdf")
+    assert trans.main([str(raw), "CM"]) == 0
+    import shutil
+    (raw / "A").mkdir()
+    (raw / "B").mkdir()
+    shutil.copy2(raw / "CM01.pdf", raw / "A/CM01.pdf")
+    (raw / "CM01.pdf").rename(raw / "B/CM01.pdf")
+    assert trans.main([str(raw), "CM"]) == 1
+    assert len(courses(home)["CM"]["documents"]) == 1

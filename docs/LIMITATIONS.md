@@ -15,3 +15,10 @@
 - Changed original content is rejected; restore the original and add the revision separately. Course remote rebinding and legacy registry migration require manual inspection; no automatic destructive migration.
 - A clean dedicated publication checkout is required. Failed pushes retain commits; divergent remote history or uncommitted local changes require manual recovery. No force-push.
 - GitHub CLI authentication and Git access are both required. The privacy check fails closed. Real private GitHub push, Office export and global Windows Git Bash PATH need local validation; automated tests use synthetic PDFs and local Git remotes.
+
+## V1.2 candidate
+
+- Group synchronization registers all newly found raw files, but publishes only the selected subtree and retains all previously published documents. Full validation still checks all included original sources. The complete raw directory must remain accessible.
+- New nested documents use sources/by-group; existing published paths remain stable even after moving between groups. GROUPS.md is the authoritative current grouping. Manual source renames are tracked by unique hash but not renamed again. Ambiguous duplicate moves fail closed.
+- Course-specific group presets persist, with longest matching path taking precedence. Full sync reapplies these presets. Group name matching uses actual folder spelling and case.
+- No real private remote V1.2 group sync or Office export has been tested; CI uses synthetic PDFs and local remotes.

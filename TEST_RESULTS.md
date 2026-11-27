@@ -17,3 +17,7 @@ During test setup, the host system temporary directory denied access; acceptance
 ## V1.1 release candidate
 
 New synthetic tests in tests/test_trans.py cover persistent registration, natural numbering, dry run, original hashes, append, relocation, rename journal recovery, privacy rejection, local bare remote publication, no-op reruns, remote AI review preservation, preset change, and malformed PDF rejection. CI is the verification source for this candidate; do not treat the V1.0 test result as a V1.1 result. Real private GitHub push, Office export and Windows Git Bash global installation have not yet been exercised.
+
+## V1.2 candidate
+
+Added synthetic integration tests for bound-remote shortcut, nested groups, selective publish, persisted per-group preset, complete index, source move with stable image URL, batch retrieval, no-op and ambiguous move rejection. See GitHub Actions for current execution status. V1.1 real-world Windows PDF publication was verified separately; this does not establish V1.2 runtime success.

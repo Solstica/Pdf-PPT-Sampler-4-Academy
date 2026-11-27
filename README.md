@@ -1,6 +1,24 @@
-# Pdf-PPT-Sampler-4-Academy 1.1 (release candidate)
+# Pdf-PPT-Sampler-4-Academy 1.2 (release candidate)
 
 确定性的课件图像工具 + 独立的多模态 AI 复习协议。Python 不依赖大模型 API，不 OCR、不提取文字、不总结。支持 Python 3.10+；Windows 为主要环境，PDF 处理使用跨平台 PyMuPDF/Pillow。
+
+## V1.2 增量与目录分类
+
+已绑定远程的课程可以直接运行 trans PP，不再需要仓库地址。
+
+~~~bash
+trans PP
+trans PP --group Notes -pre 1
+trans PP --group Homework -pre 3
+trans PP --group "Teacher A/Week 1"
+trans PP --group .
+~~~
+
+--group 选择 raw 下相对目录及其后代；. 仅选根目录文件。同步时仍扫描和注册全课程新增原件，但仅转换/上传所选组中的新资料，其他已发布资料继续出现在完整索引中。-pre 与 --group 同用时保存该组的独立预设（最长匹配目录优先），不改变课程默认值。未指定 --group 时同步全部，使用各组已保存预设。
+
+新增文件保持 raw 层级，GitHub 页面存储在 sources/by-group/<子目录>/<文档ID>/；根目录资料仍为 sources/<文档ID>/。全课程唯一编号追加，不按组重新编号。sources/GROUPS.md 按当前 raw 目录分类，链接到真实 manifest。原有 V1.1 文档保留原路径；移动已注册文件时依据唯一 SHA256 匹配更新分类，原页面 URL 和 ID 不改变。若手工改名，保留该新文件名，但文档 ID 不变。相同哈希的多候选、源内容修改或删除会安全拒绝。使用 trans --show PP 查看当前路径与分组预设。
+
+升级后无需重建课程注册表或再次注册。旧版课件索引和复习资料不会删除。V1.2 候选版的实际 CI 状态见 Actions。
 
 ## V1.1 快速命令（trans）
 

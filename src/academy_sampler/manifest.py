@@ -26,3 +26,21 @@ def inside(root,path):
  p=(root/path).resolve()
  if not p.is_relative_to(root.resolve()): raise ValueError('Path escapes workspace: '+str(path))
  return p
+
+
+def source_directory(record):
+    ident = record["document_id"]
+    if not re.fullmatch(r"[A-Z][A-Z0-9]*", ident):
+        raise ValueError("Invalid document ID")
+    rel = record.get("source_directory", "sources/" + ident)
+    parts = rel.split("/")
+    if (rel != "sources/" + ident and
+        (len(parts) < 4 or parts[:2] != ["sources", "by-group"] or parts[-1] != ident)):
+        raise ValueError("Invalid source directory: " + rel)
+    if any(p in {"", ".", "..", ".git"} or "\\" in p or ":" in p for p in parts):
+        raise ValueError("Unsafe source directory: " + rel)
+    return rel
+
+
+def document_folder(root, record):
+    return inside(root, source_directory(record))

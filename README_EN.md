@@ -1,8 +1,12 @@
-# Pdf-PPT-Sampler-4-Academy 1.1 (release candidate)
+# Pdf-PPT-Sampler-4-Academy 1.2 (release candidate)
 
 A deterministic Python slide pipeline and a separate multimodal study protocol. No model API, OCR, extracted text, or generated summaries. Python 3.10+, Windows first; PDF processing is portable to Linux/macOS.
 
 Install with `pip install -e ".[test]"`; Windows Office support: `pip install -e ".[test,windows]"`. Run `academy init my-course`, enter the directory, put source files under raw, then run `academy ingest`, `academy render`, `academy validate`, `academy index`, `academy progress`. Use `academy --workspace PATH COMMAND` from elsewhere. Every command has --help and failures return nonzero.
+
+## V1.2: incremental groups
+
+After binding a remote, run trans PP or trans PP --group Notes -pre 1. Group selects a raw subfolder and its descendants; dot selects root files only. All sources are registered, but new documents outside the chosen group are deferred. Group-specific presets persist; the most specific folder wins. New nested documents use sources/by-group/<folder>/<ID>/, legacy and moved documents retain their published URL. GROUPS.md links all published documents by their current source group. Unique hash-based moves preserve IDs; ambiguous moves and changed sources are rejected.
 
 ## trans quick start
 

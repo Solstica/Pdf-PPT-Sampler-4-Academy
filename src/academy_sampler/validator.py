@@ -1,5 +1,5 @@
 import pymupdf as fitz
-from .manifest import load,inside
+from .manifest import load,inside,document_folder
 from .registry import registered,source
 from .renderer import valid_image,dimensions
 from .converters import pdf_source
@@ -7,7 +7,7 @@ from .converters import pdf_source
 def validate(root):
  errors=[]; manifests=[]
  for d in registered(root):
-  mp=root/'sources'/d['document_id']/'manifest.json'; m=load(mp)
+  mp=document_folder(root,d)/'manifest.json'; m=load(mp)
   if m is None: errors.append(d['document_id']+': missing manifest'); continue
   manifests.append(m)
   try:
